@@ -17,6 +17,7 @@ const shapes = {
   五边形: { type: "polygon" as const, sides: 5, perEdge: 3, scale: 1.0 },
   星形: { type: "star" as const, points: 5, innerRatio: 0.5, perEdge: 2, scale: 1.0 },
   玫瑰花: { type: "rose" as const, k: 5, samples: 72, scale: 1.0 },
+  心形: { type: "heart" as const, samples: 96, scale: 1.0 },
 };
 
 export default function GameCanvas() {
@@ -121,6 +122,31 @@ export default function GameCanvas() {
       anchors.push({ x: cx + r * Math.cos(t), y: cy + r * Math.sin(t) });
     }
     return anchors;
+  };
+
+  // 心形曲线：x = 16 sin^3(t), y = 13 cos(t) - 5 cos(2t) - 2 cos(3t) - cos(4t)
+  const makeHeartAnchors = (cx: number, cy: number, radius: number, samples = 96) => {
+    const raw: { x: number; y: number }[] = [];
+    for (let i = 0; i < samples; i++) {
+      const t = (i / samples) * Math.PI * 2;
+      const x = 16 * Math.sin(t) ** 3;
+      const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+      raw.push({ x, y: -y }); // 反转y使心尖朝下
+    }
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of raw) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+    const w = maxX - minX;
+    const h = maxY - minY;
+    const s = (radius * 2) / Math.max(w, h);
+    return raw.map(p => ({
+      x: cx + (p.x - (minX + w / 2)) * s,
+      y: cy + (p.y - (minY + h / 2)) * s,
+    }));
   };
 
   // 依据SVG路径d字符串等距采样anchors，并缩放/居中到(cx, cy)附近
@@ -298,6 +324,20 @@ export default function GameCanvas() {
         gmRef.current!.setCornerSmooth(0.22);
       }
       // Removed rose-specific damping and anchor strength calls to revert behavior
+    } else if (cfg.type === "heart") {
+      const anchors = makeHeartAnchors(rect.width / 2, rect.height / 2, radius, cfg.samples!);
+      if (typeof (gm as any).resetAnchoredShape === "function") {
+        gm.resetAnchoredShape(anchors);
+      } else {
+        gm.stop();
+        const newGm = new GameManager(canvas);
+        gmRef.current = newGm;
+        newGm.start();
+        newGm.resetAnchoredShape(anchors);
+      }
+      if (typeof (gmRef.current as any).setCornerSmooth === "function") {
+        gmRef.current!.setCornerSmooth(0.2);
+      }
     } else {
       const anchors = makeRegularPolygonAnchors(rect.width / 2, rect.height / 2, radius, cfg.sides!, cfg.perEdge!);
       if (typeof (gm as any).resetAnchoredShape === "function") {
@@ -323,23 +363,24 @@ export default function GameCanvas() {
   return (
     <div className="relative w-full h-[calc(100vh-0px)]">
       <canvas ref={canvasRef} className="w-full h-full touch-none" />
-      {/* 删除左上角提示文案 */}
-      {/* <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-white/70 px-3 py-1 text-sm text-zinc-700 shadow">
-        揉团子 · 试试拖拽/揉捏
-      </div> */}
-      <div className="pointer-events-auto absolute right-4 top-4 flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-sm text-zinc-700 shadow">
-        <span className="text-xs text-zinc-500">颜色</span>
-        <select onChange={onColorChange} className="rounded border border-zinc-200 bg-white px-2 py-1 text-xs">
-          {Object.keys(palettes).map((name) => (
-            <option key={name} value={name}>{name}</option>
-          ))}
-        </select>
-        <span className="ml-2 text-xs text-zinc-500">形状</span>
-        <select onChange={onShapeChange} className="rounded border border-zinc-200 bg-white px-2 py-1 text-xs">
-          {Object.keys(shapes).map((name) => (
-            <option key={name} value={name}>{name}</option>
-          ))}
-        </select>
+      {/* 左侧控制面板：颜色与形状 */}
+      <div className="pointer-events-auto absolute left-4 top-4 flex flex-col gap-2 rounded-2xl bg-white/80 px-3 py-2 text-sm text-zinc-700 shadow">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-zinc-500">颜色</span>
+          <select onChange={onColorChange} className="rounded border border-zinc-200 bg-white px-2 py-1 text-xs">
+            {Object.keys(palettes).map((name) => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-zinc-500">形状</span>
+          <select onChange={onShapeChange} className="rounded border border-zinc-200 bg-white px-2 py-1 text-xs">
+            {Object.keys(shapes).map((name) => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+        </div>
       </div>
     </div>
   );
