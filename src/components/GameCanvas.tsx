@@ -17,7 +17,7 @@ const shapes = {
   五边形: { type: "polygon" as const, sides: 5, perEdge: 3, scale: 1.0 },
   星形: { type: "star" as const, points: 5, innerRatio: 0.5, perEdge: 2, scale: 1.0 },
   玫瑰花: { type: "rose" as const, k: 5, samples: 72, scale: 1.0 },
-  心形: { type: "heart" as const, samples: 96, scale: 1.0 },
+  心形: { type: "heart" as const, samples: 128, scale: 1.0 },
 };
 
 export default function GameCanvas() {
@@ -143,10 +143,25 @@ export default function GameCanvas() {
     const w = maxX - minX;
     const h = maxY - minY;
     const s = (radius * 2) / Math.max(w, h);
-    return raw.map(p => ({
+    const anchors: { x: number; y: number }[] = raw.map(p => ({
       x: cx + (p.x - (minX + w / 2)) * s,
       y: cy + (p.y - (minY + h / 2)) * s,
     }));
+    // 平滑曲线（环形移动平均），去除心尖的尖角感
+    const alpha = 0.35; // 平滑强度 0..1
+    const iterations = 3; // 迭代次数
+    for (let it = 0; it < iterations; it++) {
+      const prev = anchors.map(p => ({ x: p.x, y: p.y }));
+      for (let i = 0; i < anchors.length; i++) {
+        const i0 = (i - 1 + anchors.length) % anchors.length;
+        const i1 = (i + 1) % anchors.length;
+        anchors[i] = {
+          x: prev[i].x * (1 - alpha) + ((prev[i0].x + prev[i1].x) / 2) * alpha,
+          y: prev[i].y * (1 - alpha) + ((prev[i0].y + prev[i1].y) / 2) * alpha,
+        };
+      }
+    }
+    return anchors;
   };
 
   // 依据SVG路径d字符串等距采样anchors，并缩放/居中到(cx, cy)附近
@@ -336,7 +351,7 @@ export default function GameCanvas() {
         newGm.resetAnchoredShape(anchors);
       }
       if (typeof (gmRef.current as any).setCornerSmooth === "function") {
-        gmRef.current!.setCornerSmooth(0.2);
+        gmRef.current!.setCornerSmooth(0.35);
       }
     } else {
       const anchors = makeRegularPolygonAnchors(rect.width / 2, rect.height / 2, radius, cfg.sides!, cfg.perEdge!);
