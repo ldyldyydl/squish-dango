@@ -57,7 +57,8 @@ export class InputController {
     const x = ev.clientX - rect.left;
     const y = ev.clientY - rect.top;
 
-    const target = this.pickNearest(x, y, 60);
+-    const target = this.pickNearest(x, y, 60);
++    const target = this.pickNearest(x, y, 120);
     const info: PointerInfo = { id: ev.pointerId, lastX: x, lastY: y, target };
     this.pointers.set(ev.pointerId, info);
 

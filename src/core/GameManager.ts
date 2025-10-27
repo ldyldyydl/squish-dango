@@ -17,13 +17,13 @@ export class GameManager {
   start() {
     const rect = this.canvas.getBoundingClientRect();
     this.renderer.resize(rect.width, rect.height);
-+   this.physics.setBounds(rect.width, rect.height);
+    this.physics.setBounds(rect.width, rect.height);
 
     // Center soft body
     this.physics.createSoftDonut(rect.width / 2, rect.height / 2, Math.min(rect.width, rect.height) / 4, 18);
 
     // Input on outer particles
-    const bodies = this.physics.softBody ? this.physics.softBody.outer : [];
+    const bodies = this.physics.softBody ? [this.physics.softBody.center, ...this.physics.softBody.outer] : [];
     this.input = new InputController(this.canvas, bodies);
     this.input.attach();
 
@@ -39,7 +39,7 @@ export class GameManager {
   resize() {
     const rect = this.canvas.getBoundingClientRect();
     this.renderer.resize(rect.width, rect.height);
-+   this.physics.setBounds(rect.width, rect.height);
+    this.physics.setBounds(rect.width, rect.height);
   }
 
   private loop = (ts: number) => {
