@@ -19,11 +19,20 @@ export class PhysicsEngine {
   private ringConstraints: Constraint[] = [];
   private spokeConstraints: Constraint[] = [];
   private baseRadius = 80;
+  private recoveryGain = 0;
+  private anchors: { x: number; y: number }[] | null = null;
+  private anchorKBase = 0.0012;
+  private anchorKInteract = 0.0006;
+  private anchorSnapDist = 0.8;
+  private anchorDampInteract = 0.75;
+  private anchorDampIdle = 0.92;
 
   constructor() {
     this.engine = Engine.create();
     this.world = this.engine.world;
     this.world.gravity.y = 0;
+    // 开启睡眠以降低微小抖动的能量积累
+    (this.engine as unknown as { enableSleeping: boolean }).enableSleeping = true;
   }
 
   setInteracting(active: boolean) {
@@ -33,8 +42,8 @@ export class PhysicsEngine {
   createSoftDonut(x: number, y: number, radius = 80, circleCount = 16) {
     this.baseRadius = radius;
     const center = Bodies.circle(x, y, 12, {
-      restitution: 0.2,
-      frictionAir: 0.05,
+      restitution: 0.05,
+      frictionAir: 0.12,
     });
 
     const outer: Body[] = Array.from({ length: circleCount }, (_, i) => {
@@ -42,8 +51,8 @@ export class PhysicsEngine {
       const px = x + Math.cos(angle) * radius;
       const py = y + Math.sin(angle) * radius;
       return Bodies.circle(px, py, 12, {
-        restitution: 0.4,
-        frictionAir: 0.06,
+        restitution: 0.1,
+        frictionAir: 0.14,
       });
     });
 
@@ -93,10 +102,36 @@ export class PhysicsEngine {
     // Add bodies and constraints to world
     World.add(this.world, [center, ...outer, ...constraints]);
 
+    // 进入世界后清零初始速度，避免启动时抖动
+    Body.setVelocity(center, { x: 0, y: 0 });
+    Body.setAngularVelocity(center, 0);
+    for (const b of outer) {
+      Body.setVelocity(b, { x: 0, y: 0 });
+      Body.setAngularVelocity(b, 0);
+    }
+
     // Record base stiffness for dynamic softening during interaction
     constraints.forEach((c) => this.baseStiffness.set(c, c.stiffness ?? 1));
 
     this.softBody = { center, outer, constraints };
+    this.anchors = null; // circle shape uses radial pressure, no anchors
+  }
+
+  resetSoftDonut(x: number, y: number, radius = 80, circleCount = 16) {
+    // Remove existing soft body from world and clear caches
+    if (this.softBody) {
+      const { center, outer, constraints } = this.softBody;
+      World.remove(this.world, [center, ...outer, ...constraints]);
+      this.softBody = null;
+    }
+    this.ringConstraints = [];
+    this.spokeConstraints = [];
+    this.baseStiffness.clear();
+    this.recoveryGain = 0;
+    this.interactBlend = 0;
+
+    // Recreate with new parameters
+    this.createSoftDonut(x, y, radius, circleCount);
   }
 
   setBounds(width: number, height: number) {
@@ -132,23 +167,116 @@ export class PhysicsEngine {
     World.add(this.world, this.walls);
   }
 
+  createSoftAnchored(anchors: { x: number; y: number }[]) {
+    const n = anchors.length;
+    if (n < 3) return;
+    // compute centroid
+    const cx = anchors.reduce((s, p) => s + p.x, 0) / n;
+    const cy = anchors.reduce((s, p) => s + p.y, 0) / n;
+
+    const center = Bodies.circle(cx, cy, 12, { restitution: 0.05, frictionAir: 0.12 });
+    const outer: Body[] = anchors.map((p) => Bodies.circle(p.x, p.y, 12, { restitution: 0.1, frictionAir: 0.14 }));
+    const constraints: Constraint[] = [];
+
+    // Neighbor ring
+    for (let i = 0; i < n; i++) {
+      const a = outer[i];
+      const b = outer[(i + 1) % n];
+      const c = Constraint.create({ bodyA: a, bodyB: b, stiffness: 0.30 });
+      constraints.push(c);
+      this.ringConstraints.push(c);
+    }
+    // Second/third neighbors (optional smoothing)
+    for (let i = 0; i < n; i++) {
+      const a = outer[i];
+      const b2 = outer[(i + 2) % n];
+      const c2 = Constraint.create({ bodyA: a, bodyB: b2, stiffness: 0.20 });
+      constraints.push(c2);
+      this.ringConstraints.push(c2);
+      const b3 = outer[(i + 3) % n];
+      const c3 = Constraint.create({ bodyA: a, bodyB: b3, stiffness: 0.08 });
+      constraints.push(c3);
+      this.ringConstraints.push(c3);
+    }
+    // Spokes to center
+    for (let i = 0; i < n; i++) {
+      const o = outer[i];
+      const len = Math.hypot(o.position.x - cx, o.position.y - cy);
+      const c = Constraint.create({ bodyA: o, bodyB: center, stiffness: 0.25, length: len });
+      constraints.push(c);
+      this.spokeConstraints.push(c);
+    }
+
+    World.add(this.world, [center, ...outer, ...constraints]);
+    // 清零初始速度，防止创建后自发抖动
+    Body.setVelocity(center, { x: 0, y: 0 });
+    Body.setAngularVelocity(center, 0);
+    for (const b of outer) {
+      Body.setVelocity(b, { x: 0, y: 0 });
+      Body.setAngularVelocity(b, 0);
+    }
+    constraints.forEach((c) => this.baseStiffness.set(c, c.stiffness ?? 1));
+    this.softBody = { center, outer, constraints };
+    this.anchors = anchors.slice();
+  }
+
+  // 调整软体的空气阻尼（可在创建后调用以减轻抖动）
+  setFrictionAir(outer?: number, center?: number) {
+    if (!this.softBody) return;
+    if (typeof center === "number") {
+      this.softBody.center.frictionAir = Math.max(0, Math.min(1, center));
+    }
+    if (typeof outer === "number") {
+      for (const b of this.softBody.outer) {
+        b.frictionAir = Math.max(0, Math.min(1, outer));
+      }
+    }
+  }
+
+  resetSoftAnchored(anchors: { x: number; y: number }[]) {
+    if (this.softBody) {
+      const { center, outer, constraints } = this.softBody;
+      World.remove(this.world, [center, ...outer, ...constraints]);
+      this.softBody = null;
+    }
+    this.ringConstraints = [];
+    this.spokeConstraints = [];
+    this.baseStiffness.clear();
+    this.recoveryGain = 0;
+    this.interactBlend = 0;
+    this.createSoftAnchored(anchors);
+  }
+
   update(deltaMs: number) {
     // Smoothly blend interaction state for gentle, slow recovery after release
     const target = this.isInteracting ? 1 : 0;
     const tau = this.isInteracting ? 120 : 900; // ms time constants for in/out
     this.interactBlend += (target - this.interactBlend) * Math.min(1, deltaMs / tau);
+    // Linear ramp-up of recovery after release (speed linearly increases)
+    if (this.isInteracting) {
+      this.recoveryGain = 0;
+    } else {
+      const recoveryT = 24000; // ms to fully recover (slower recovery)
+      this.recoveryGain = Math.min(1, this.recoveryGain + deltaMs / recoveryT);
+    }
     // Soften constraints while interacting to reduce rebound
     this.applyConstraintSoftening();
-    // Apply gentle radial pressure to preserve volume/radius
-    this.applyRadialPressure();
+    if (this.anchors) {
+      this.applyAnchorAttraction();
+    } else {
+      this.applyRadialPressure();
+    }
     Engine.update(this.engine, deltaMs);
     this.applyBoundarySqueeze();
   }
 
   private applyConstraintSoftening() {
     if (!this.softBody) return;
-    const ringScale = 1.0 + (0.20 - 1.0) * this.interactBlend;
-    const spokeScale = 1.0 + (0.4 - 1.0) * this.interactBlend;
+    const outBlend = this.isInteracting
+      ? this.interactBlend
+      : (1 - Math.pow(this.recoveryGain, 1.5));
+    const ringScale = 1.0 + (0.20 - 1.0) * outBlend;
+    const spokeScale = 1.0 + (0.4 - 1.0) * outBlend;
     for (const c of this.ringConstraints) {
       const base = this.baseStiffness.get(c) ?? c.stiffness ?? 1;
       c.stiffness = base * ringScale;
@@ -164,9 +292,12 @@ export class PhysicsEngine {
     if (!this.softBody) return;
     const cx = this.softBody.center.position.x;
     const cy = this.softBody.center.position.y;
-    const baseK = 0.00035;
-    const interactK = 0.0010;
-    const k = baseK + (interactK - baseK) * this.interactBlend;
+    const baseK = 0.00025;
+    const interactKMax = 0.0010;
+    const recoverKMax = 0.0006; // cap recovery pressure lower than interact for slower return
+    const k = this.isInteracting
+      ? baseK + (interactKMax - baseK) * this.interactBlend
+      : baseK + (recoverKMax - baseK) * this.recoveryGain;
     const clampMax = this.baseRadius * 1.25;
     for (const body of this.softBody.outer) {
       const dx = body.position.x - cx;
@@ -217,4 +348,35 @@ export class PhysicsEngine {
        }
      }
    }
+  private applyAnchorAttraction() {
+    if (!this.softBody || !this.anchors) return;
+    // 锚点吸引：非交互时更强，同时近距离时吸附并清零速度以避免持续抖动
+    const k = this.isInteracting ? this.anchorKInteract : this.anchorKBase;
+    const damp = this.isInteracting ? this.anchorDampInteract : this.anchorDampIdle;
+    const snapDist = this.anchorSnapDist;
+    for (let i = 0; i < this.softBody.outer.length && i < this.anchors.length; i++) {
+      const body = this.softBody.outer[i];
+      const target = this.anchors[i];
+      const dx = target.x - body.position.x;
+      const dy = target.y - body.position.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < snapDist && !this.isInteracting) {
+        Body.setPosition(body, { x: target.x, y: target.y });
+        Body.setVelocity(body, { x: 0, y: 0 });
+        Body.setAngularVelocity(body, 0);
+        continue;
+      }
+      Body.applyForce(body, body.position, { x: dx * k, y: dy * k });
+      if (!this.isInteracting) {
+        Body.setVelocity(body, { x: body.velocity.x * damp, y: body.velocity.y * damp });
+      }
+    }
+  }
+  setAnchorStrength(base: number, interact?: number) {
+    this.anchorKBase = Math.max(0, base);
+    if (typeof interact === "number") this.anchorKInteract = Math.max(0, interact);
+  }
+  hasAnchors(): boolean {
+    return !!this.anchors && this.anchors.length > 0;
+  }
 }
