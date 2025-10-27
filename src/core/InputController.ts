@@ -13,14 +13,15 @@ export class InputController {
   private pointers = new Map<number, PointerInfo>();
   private pressSound?: Howl;
   private releaseSound?: Howl;
+  private lastPinchDist?: number;
 
   constructor(private canvas: HTMLCanvasElement, private bodies: Body[]) {
     // Try to load sounds from public assets; if missing, fail silently
     try {
       const base = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/+$/, "");
       const prefix = base ? `/${base}` : "";
-      this.pressSound = new Howl({ src: [`${prefix}/sounds/press.mp3`], volume: 0.6 });
-      this.releaseSound = new Howl({ src: [`${prefix}/sounds/release.mp3`], volume: 0.6 });
+      this.pressSound = undefined;
+      this.releaseSound = undefined;
     } catch (_) {}
   }
 
@@ -63,8 +64,7 @@ export class InputController {
 
     this.canvas.setPointerCapture?.(ev.pointerId);
 
-    if (target && this.pressSound) this.pressSound.play();
-    if (navigator.vibrate) navigator.vibrate(10);
+    /* audio/vibrate disabled temporarily */
   };
 
   private onPointerMove = (ev: PointerEvent) => {
@@ -88,15 +88,70 @@ export class InputController {
         y: dy * 0.002,
       });
     }
+
+    // Apply pinch forces when two or more pointers are active
+    if (this.pointers.size >= 2) {
+      this.applyPinchForces();
+    }
   };
 
   private onPointerUp = (ev: PointerEvent) => {
     const info = this.pointers.get(ev.pointerId);
     if (!info) return;
 
-    if (info.target && this.releaseSound) this.releaseSound.play();
-    if (navigator.vibrate) navigator.vibrate(8);
+    /* audio/vibrate disabled temporarily */
 
     this.pointers.delete(ev.pointerId);
+
+    if (this.pointers.size < 2) {
+      this.lastPinchDist = undefined;
+    }
   };
+
+  private applyPinchForces() {
+    const arr = Array.from(this.pointers.values());
+    if (arr.length < 2) return;
+    let a = arr.find((p) => p.target) || arr[0];
+    let b = arr.find((p) => p !== a && p.target) || arr.find((p) => p !== a) || a;
+    if (!a || !b || a.id === b.id) return;
+
+    // Ensure targets exist for both pointers
+    if (!a.target) a.target = this.pickNearest(a.lastX, a.lastY, 120);
+    if (!b.target) b.target = this.pickNearest(b.lastX, b.lastY, 120);
+    if (!a.target || !b.target) return;
+
+    const dx = a.lastX - b.lastX;
+    const dy = a.lastY - b.lastY;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= 0) return;
+
+    if (this.lastPinchDist === undefined) {
+      this.lastPinchDist = dist;
+      return;
+    }
+
+    const pinchDelta = this.lastPinchDist - dist; // >0 closing, <0 spreading
+    this.lastPinchDist = dist;
+
+    const midX = (a.lastX + b.lastX) / 2;
+    const midY = (a.lastY + b.lastY) / 2;
+
+    const applyTowardsMid = (body: Body, closing: boolean) => {
+      const vx = midX - body.position.x;
+      const vy = midY - body.position.y;
+      const len = Math.hypot(vx, vy) || 1;
+      const nx = vx / len;
+      const ny = vy / len;
+      const sign = closing ? 1 : -1;
+      const magnitude = Math.min(40, Math.abs(pinchDelta)) * 0.003;
+      MatterBody.applyForce(body, body.position, {
+        x: nx * sign * magnitude,
+        y: ny * sign * magnitude,
+      });
+    };
+
+    const closing = pinchDelta > 0;
+    applyTowardsMid(a.target, closing);
+    applyTowardsMid(b.target, closing);
+  }
 }

@@ -27,7 +27,7 @@ export default function GameCanvas() {
 
   return (
     <div className="relative w-full h-[calc(100vh-0px)]">
-      <canvas ref={canvasRef} className="w-full h-full touch-none" />
+     <canvas ref={canvasRef} className="w-full h-full touch-none" />
       <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-white/70 px-3 py-1 text-sm text-zinc-700 shadow">
         揉团子 · 试试拖拽/揉捏
       </div>

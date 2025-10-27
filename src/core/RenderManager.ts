@@ -20,7 +20,9 @@ export class RenderManager {
   }
 
   clear() {
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    // Use CSS pixel space to clear consistent with current transform
+    const { width, height } = this.canvas.getBoundingClientRect();
+    this.ctx.clearRect(0, 0, width, height);
   }
 
   drawSoftBody(center: Body, outer: Body[]) {
@@ -37,6 +39,18 @@ export class RenderManager {
 
     const points = outer.map((b) => ({ x: b.position.x, y: b.position.y }));
     if (points.length < 3) return;
+
+    // Fallback: if blob collapsed to a tiny radius, show a placeholder
+    const firstDist = Math.hypot(points[0].x - center.position.x, points[0].y - center.position.y);
+    if (firstDist < 5) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(center.position.x, center.position.y, 40, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255, 182, 193, 0.85)"; // lightpink
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
 
     // Soft blob path using quadratic curves
     ctx.beginPath();
@@ -57,13 +71,18 @@ export class RenderManager {
       10,
       center.position.x,
       center.position.y,
-      Math.max(60, Math.hypot(points[0].x - center.position.x, points[0].y - center.position.y))
+      Math.max(60, firstDist)
     );
     gradient.addColorStop(0, "rgba(255, 192, 203, 0.9)"); // inner pink
     gradient.addColorStop(1, "rgba(255, 105, 180, 0.75)"); // outer deeper
 
     ctx.fillStyle = gradient;
     ctx.fill();
+
+    // Outline for visibility
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
+    ctx.stroke();
 
     // Highlight
     ctx.save();
