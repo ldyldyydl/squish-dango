@@ -323,9 +323,10 @@ export default function GameCanvas() {
   return (
     <div className="relative w-full h-[calc(100vh-0px)]">
       <canvas ref={canvasRef} className="w-full h-full touch-none" />
-      <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-white/70 px-3 py-1 text-sm text-zinc-700 shadow">
+      {/* 删除左上角提示文案 */}
+      {/* <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-white/70 px-3 py-1 text-sm text-zinc-700 shadow">
         揉团子 · 试试拖拽/揉捏
-      </div>
+      </div> */}
       <div className="pointer-events-auto absolute right-4 top-4 flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-sm text-zinc-700 shadow">
         <span className="text-xs text-zinc-500">颜色</span>
         <select onChange={onColorChange} className="rounded border border-zinc-200 bg-white px-2 py-1 text-xs">
