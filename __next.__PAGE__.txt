@@ -1,0 +1,6 @@
+1:"$Sreact.fragment"
+2:I[4751,["/squish-dango/_next/static/chunks/72ee297336637d97.js"],"default"]
+3:I[97367,["/squish-dango/_next/static/chunks/42879de7b8087bc9.js"],"OutletBoundary"]
+4:"$Sreact.suspense"
+0:{"buildId":"U_J4JY8NVU7V5lGB2wGzH","rsc":["$","$1","c",{"children":[["$","div",null,{"className":"flex min-h-screen w-full flex-col bg-zinc-50 font-sans dark:bg-black","children":[["$","header",null,{"className":"flex items-center justify-between px-6 py-3","children":[["$","h1",null,{"className":"text-xl font-semibold text-zinc-800 dark:text-zinc-100","children":"揉团子解压小游戏"}],["$","a",null,{"className":"rounded-full border border-zinc-200 px-3 py-1 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800","href":"#","children":"实验原型"}]]}],["$","main",null,{"className":"flex flex-1","children":["$","$L2",null,{}]}]]}],[["$","script","script-0",{"src":"/squish-dango/_next/static/chunks/72ee297336637d97.js","async":true}]],["$","$L3",null,{"children":["$","$4",null,{"name":"Next.MetadataOutlet","children":"$@5"}]}]]}],"loading":null,"isPartial":false}
+5:null
