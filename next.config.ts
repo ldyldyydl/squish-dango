@@ -8,13 +8,15 @@ const baseSegment = explicitBase
   ? explicitBase.replace(/^\/+/, "").replace(/\/+$/, "")
   : repoName;
 const basePath = isProd && baseSegment ? `/${baseSegment}` : "";
-const assetPrefix = basePath ? `${basePath}/` : "";
+// Use basePath directly to avoid double slashes in asset URLs
+const assetPrefix = basePath || "";
 
 const nextConfig: NextConfig = {
   output: "export",
   basePath,
   assetPrefix,
   images: { unoptimized: true },
+  trailingSlash: true,
 };
 
 export default nextConfig;
