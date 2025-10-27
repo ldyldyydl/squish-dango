@@ -24,7 +24,7 @@ export class GameManager {
 
     // Input on outer particles
     const bodies = this.physics.softBody ? [this.physics.softBody.center, ...this.physics.softBody.outer] : [];
-    this.input = new InputController(this.canvas, bodies);
+    this.input = new InputController(this.canvas, bodies, (active) => this.physics.setInteracting(active));
     this.input.attach();
 
     this.lastTs = performance.now();

@@ -14,8 +14,7 @@ export class InputController {
   private pressSound?: Howl;
   private releaseSound?: Howl;
   private lastPinchDist?: number;
-
-  constructor(private canvas: HTMLCanvasElement, private bodies: Body[]) {
+  constructor(private canvas: HTMLCanvasElement, private bodies: Body[], private onInteractChange?: (active: boolean) => void) {
     // Try to load sounds from public assets; if missing, fail silently
     try {
       const base = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/+$/, "");
@@ -63,8 +62,8 @@ export class InputController {
     this.pointers.set(ev.pointerId, info);
 
     this.canvas.setPointerCapture?.(ev.pointerId);
-
     /* audio/vibrate disabled temporarily */
+    if (this.onInteractChange) this.onInteractChange(true);
   };
 
   private onPointerMove = (ev: PointerEvent) => {
@@ -84,8 +83,8 @@ export class InputController {
     if (info.target) {
       // Apply force proportional to pointer movement
       MatterBody.applyForce(info.target, info.target.position, {
-        x: dx * 0.002,
-        y: dy * 0.002,
+        x: dx * 0.006,
+        y: dy * 0.006,
       });
     }
 
@@ -98,14 +97,12 @@ export class InputController {
   private onPointerUp = (ev: PointerEvent) => {
     const info = this.pointers.get(ev.pointerId);
     if (!info) return;
-
     /* audio/vibrate disabled temporarily */
-
     this.pointers.delete(ev.pointerId);
-
     if (this.pointers.size < 2) {
       this.lastPinchDist = undefined;
     }
+    if (this.pointers.size === 0 && this.onInteractChange) this.onInteractChange(false);
   };
 
   private applyPinchForces() {
@@ -143,7 +140,7 @@ export class InputController {
       const nx = vx / len;
       const ny = vy / len;
       const sign = closing ? 1 : -1;
-      const magnitude = Math.min(40, Math.abs(pinchDelta)) * 0.003;
+      const magnitude = Math.min(60, Math.abs(pinchDelta)) * 0.006;
       MatterBody.applyForce(body, body.position, {
         x: nx * sign * magnitude,
         y: ny * sign * magnitude,
